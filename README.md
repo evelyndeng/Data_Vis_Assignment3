@@ -1,5 +1,5 @@
 # Data_Vis_Assignment3
-Data Visualization Class - Assignment 3
+Data Visualization Class - Assignment 3 - Text/Sentiment Analysis
 
 The data file required for this project is too big to upload on Github. Please contact me if you would like access to the data.
 
