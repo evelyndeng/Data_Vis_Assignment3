@@ -1,6 +1,8 @@
 # Data_Vis_Assignment3
 Data Visualization Class - Assignment 3
 
+The data file required for this project is too big to upload on Github. Please contact me if you would like access to the data.
+
 Instructions for the assignment were:
 
 Text Mining Kickstarter Projects
