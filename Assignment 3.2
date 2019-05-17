@@ -1,0 +1,220 @@
+---
+title: "R Notebook"
+output: 
+  html_notebook:
+    toc: true
+---
+
+#1. Identifying Successful Projects
+```{r, message=FALSE}
+setwd("C:/Users/dfz12/Desktop/Evelyn/Columbia/Academic Class 2019 01 Data Visualization/Assignments/Assignment 3")
+
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+
+df <- read_csv("kickstarter_projects.csv")
+```
+
+##a) Success by Category
+*visually summarize which categories were most successful in attracting funding on kickstarter. Briefly summarize your findings.*
+
+Restructure data to prepare for plotting:
+```{r}
+df_1a <- df %>%
+  filter(state == "successful" | state == "failed") %>%
+  group_by(top_category, state) %>%
+  summarize(count=n()) %>%
+  spread(key = state, value = count) %>%
+  summarize(success_rate=100*successful/(successful+failed)) %>%
+  arrange(desc(success_rate))
+df_1a
+```
+
+Plot data:
+```{r}
+p1 <- ggplot(df_1a, aes(x=reorder(top_category, success_rate),
+                        y =success_rate), xlim=c(0,100)) 
+plot1 <- p1 + geom_point(size=2) + 
+  scale_y_continuous(limits = c(0, 100), breaks = c(0, 20, 40, 60, 80, 100)) +
+  coord_flip() + theme_wsj() +
+  theme(legend.title = element_blank()) +
+  labs(title = "Kickstart Success Rate by Project Category",
+       x = "", y = "Success Rate (%)") 
+plot1
+
+```
+
+**Projects that are most likely to be successful on kickstarter are related to dance and comics, which are about 80% successful, whereas those least likely to be successful on kickstarter are related to food and journalism, which are only about 30% successful.**
+
+#2. Writing your success story
+##a) Cleaning the Text and Word Cloud
+```{r}
+#extract the blurbs for top 1000 most successful and 1000 failed projects
+df_2a_successful <- df %>%
+  filter(state=="successful") %>%
+  arrange(desc(pledged)) %>%
+  head(1000)
+
+df_2a_failed <- df %>%
+  filter(state=="failed") %>%
+  arrange(pledged) %>%
+  head(1000) 
+
+df_2a <- rbind(df_2a_successful, df_2a_failed)
+blurbs_2a <- df_2a$blurb
+```
+
+
+Make a corpus with the blurbs information
+```{r}
+library(tm) 
+
+doc_id <- c(1:2000)
+text <- blurbs_2a
+blurbs_2a <- data.frame(doc_id, text)
+corpus_2a <- blurbs_2a %>%
+  DataframeSource() %>%
+  VCorpus()
+```
+
+Make a new function that cleans a corpus
+```{r}
+library(qdap)
+
+new_stops <- c("goal", "help", stopwords("en"))
+
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, content_transformer(replace_symbol))
+  corpus <- tm_map(corpus, removeWords, c(new_stops))  
+  corpus <- tm_map(corpus, content_transformer(replace_number))
+  corpus <- tm_map(corpus, stripWhitespace)
+  return(corpus)
+}
+
+```
+
+Apply clean_corpus to the blurbs corpus
+```{r}
+corpus_2a_clean <- clean_corpus(corpus_2a)
+```
+
+
+Stem the blurbs corpus
+```{r}
+library(SnowballC)    
+# Stem all words
+corpus_2a_stemmed <- tm_map(corpus_2a_clean, stemDocument)
+# Show one example
+corpus_2a_stemmed[[1]]$content
+
+```
+
+Use the professor's function stemCompletion2 to avoid issue with stemCompletion in tm
+```{r}
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+```
+
+Complete the blurb corpus
+```{r}
+corpus_2a_comp <- lapply(corpus_2a_stemmed, stemCompletion2, dictionary=corpus_2a_clean)
+corpus_2a_comp <- as.VCorpus(corpus_2a_comp)
+```
+
+Create a document-term-matrix
+```{r}
+blurb_dtm_2a <- DocumentTermMatrix(corpus_2a_comp)
+
+blurb_dtm_2a <- as.matrix(blurb_dtm_2a)
+```
+
+Make a frequency table of the word used in the blurbs of successful projects
+```{r}
+library(tidytext)
+blurb_df_2a <- tidy(blurb_dtm_2a) %>%
+  head(1000)
+
+successful_words <- blurb_df_2a %>%
+  
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+
+

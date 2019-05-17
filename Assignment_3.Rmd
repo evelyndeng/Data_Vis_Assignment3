@@ -1,0 +1,503 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  html_notebook:
+    toc: yes
+---
+
+#1. Identifying Successful Projects
+```{r, message=FALSE}
+
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+
+df <- read_csv("kickstarter_projects.csv")
+```
+
+##a) Success by Category
+*visually summarize which categories were most successful in attracting funding on kickstarter. Briefly summarize your findings.*
+
+```{r}
+#Restructure data to prepare for plotting
+df_1a <- df %>%
+  filter(state == "successful" | state == "failed") %>%
+  group_by(top_category, state) %>%
+  summarize(count=n()) %>%
+  spread(key = state, value = count) %>%
+  summarize(success_rate=100*successful/(successful+failed)) %>%
+  arrange(desc(success_rate))
+```
+
+```{r}
+#Plot the relationship between success and category
+p1 <- ggplot(df_1a, aes(x=reorder(top_category, success_rate),
+                        y =success_rate), xlim=c(0,100)) 
+plot1 <- p1 + geom_point(size=2) + 
+  scale_y_continuous(limits = c(0, 100), breaks = c(0, 20, 40, 60, 80, 100)) +
+  coord_flip() + theme_wsj() +
+  theme(legend.title = element_blank()) +
+  labs(title = "Project Success Rate by Category",
+       x = "", y = "Success Rate (%)") 
+plot1
+
+```
+
+**Projects that are most likely to be successful on kickstarter are related to dance and comics, which are about 80% successful, whereas those least likely to be successful on kickstarter are related to food and journalism, which are only about 30% successful.**
+
+#2. Writing your success story
+##a) Cleaning the Text and Word Cloud
+```{r}
+#extract the blurbs for top 1000 most successful and 1000 failed projects
+df_2a_successful <- df %>%
+  filter(state=="successful") %>%
+  arrange(desc(pledged)) %>%
+  head(1000)
+
+df_2a_failed <- df %>%
+  filter(state=="failed") %>%
+  arrange(pledged) %>%
+  head(1000) 
+
+df_2a <- rbind(df_2a_successful, df_2a_failed)
+blurbs_2a <- df_2a$blurb
+```
+
+```{r}
+#Make a corpus with the blurbs information
+library(tm) 
+
+doc_id <- c(1:2000)
+text <- blurbs_2a
+blurbs_2a <- data.frame(doc_id, text)
+corpus_2a <- blurbs_2a %>%
+  DataframeSource() %>%
+  VCorpus()
+```
+
+```{r}
+#Make a new function that cleans a corpus
+library(qdap)
+
+new_stops <- c("goal", "help", stopwords("en"))
+
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, content_transformer(replace_symbol))
+  corpus <- tm_map(corpus, removeWords, c(new_stops))  
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, stripWhitespace)
+  return(corpus)
+}
+
+```
+
+```{r}
+#apply clean_corpus to the blurbs corpus
+corpus_2a_clean <- clean_corpus(corpus_2a)
+```
+
+```{r}
+library(SnowballC)    
+#Stem the blurbs corpus
+corpus_2a_stemmed <- tm_map(corpus_2a_clean, stemDocument)
+```
+
+```{r}
+#Use the professor's function stemCompletion2 to avoid issue with stemCompletion in tm
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+```
+
+```{r}
+#Complete the blurb corpus
+corpus_2a_comp <- lapply(corpus_2a_stemmed, stemCompletion2, dictionary=corpus_2a_clean)
+corpus_2a_comp <- as.VCorpus(corpus_2a_comp)
+```
+
+```{r}
+#Create a document-term-matrix
+blurb_dtm_2a <- DocumentTermMatrix(corpus_2a_comp)
+  
+blurb_dtm_2a <- as.matrix(blurb_dtm_2a)
+```
+
+```{r}
+#Make a frequency table of the words used in the blurbs of successful projects
+library(tidytext)
+blurb_df_2a <- tidytext::tidy(blurb_dtm_2a) %>%
+  head(1000)
+
+frequency <- blurb_df_2a[,2:length(blurb_df_2a)] %>%
+  colSums() %>%
+  as.data.frame()
+
+words <- names(blurb_df_2a)[2:length(blurb_df_2a)]
+
+successful_words <- cbind(words, frequency)
+names(successful_words) <- cbind("words", "frequency")
+
+successful_words <- successful_words %>%
+  arrange(desc(frequency)) %>%
+  head(100)
+
+```
+
+```{r}
+#Make a word cloud with the most frequent words in successful blurbs
+set.seed(6)
+library(wordcloud)
+library(RColorBrewer)
+wordcloud(successful_words$words, successful_words$frequency, 
+         max.words = 100, scale=c(3, 0.5), colors = brewer.pal(8, "PuOr")[-c(1:2)])
+
+```
+
+##b) Success in words
+*Provide a pyramid plot to show how the words between successful and unsuccessful projects differ in frequency. A selection of 10 - 20 top words is sufficient here.*
+
+```{r}
+#recreate the "state" variable with successes and fails.
+state <- c(rep("successful", 1000), rep("failed", 1000))
+
+#convert the dtm to a data frame and add the state variable.
+all_words <- tidytext::tidy(blurb_dtm_2a) 
+all_words$state <- state
+
+#get the frequencies of each word for all successful vs failed projects
+all_word_freqs <- all_words[,2:length(blurb_df_2a)] 
+all_word_freqs <- aggregate(. ~ state, all_word_freqs, FUN=sum)
+
+#transcribe the data frame so that each word is a row
+all_word_freqs <- tidytext::tidy(t(all_word_freqs))
+names(all_word_freqs) <- c("word", "fail", "success")
+all_word_freqs <- all_word_freqs[-1,]
+all_word_freqs$fail <- as.numeric(all_word_freqs$fail)
+all_word_freqs$success <- as.numeric(all_word_freqs$success)
+```
+
+```{r}
+#generate dataframe with most frequent words
+top_word_freqs <- all_word_freqs %>%
+  mutate(freq_total = fail + success) %>%
+  arrange(desc(freq_total)) %>%
+  head(20) %>%
+  mutate(fail= -1*fail)
+
+top_word_freqs <- top_word_freqs %>%
+  gather(fail, success, key = "state", value = "frequency") %>%
+  arrange(desc(freq_total))
+
+```
+
+
+```{r}
+#Make a pyramid plot
+ggplot(top_word_freqs, aes(x = reorder(word, frequency), 
+                  y = frequency, fill = state)) +
+  geom_bar(stat = "identity") +  
+  scale_fill_brewer(palette = "Set1") + coord_flip() + 
+  scale_y_continuous(breaks = seq(-150, 150, 50)) +
+  theme_hc() + ylab("") + xlab("")
+
+```
+
+##c) Simplicity as a virtue
+*These blurbs are short in length (max. 150 characters) but let's see whether brevity and simplicity still matters. Calculate a readability measure (Flesh Reading Ease, Flesh Kincaid or any other comparable measure) for the texts. Visualize the relationship between the readability measure and one of the measures of success. Briefly comment on your finding.*
+
+```{r}
+#obtain a random sample of 2000 projects that either failed or were successful
+#remember that "df" contains all the data from the original data frame
+require(quanteda)
+set.seed(100)
+df_random <- df %>%
+  filter(state=="successful" | state=="failed") %>%
+  .[sample(nrow(.), 2000), ]
+
+#calculate the Flesch readability scores
+readability_fre <- textstat_readability(df_random$blurb, measure="Flesch")
+flesch_score <- readability_fre$Flesch
+df_2c <- cbind(df_random, flesch_score)
+```
+
+```{r}
+#plot success against the Flesch scores.
+p <- ggplot(df_2c, aes(y = flesch_score, x = state))
+p + geom_boxplot(width=0.3) + coord_flip() +
+  labs(title="Readability Unrelated to Project Success",
+       y = "Blurb Readability Score", x = "") +
+  theme_economist()
+
+```
+
+**Based on a random selection of 2000 blurbs, it looks like readability does not matter give that these blurbs are already very short. For blurbs that score low on readability, it could be that they are full of technical jargon or lengthy words that are unique to the type of work involved. In this case, these blurbs would draw the people who are most familiar with or interested in the topic, and this may override the natural assumption that these less readable project blurbs would be funded less.
+
+Below, I also tried the same process with a non-random selection of 1000 most successful projects and 1000 least successful projects based on whether it was successful or not (the variable "state") and based on the pledge amount (the variable "pledged") and the results were similar despite the more drastic difference between the two groups.**
+
+```{r}
+#remember that "df_2a" contains all the data from the original data frame for the top 1000 and bottom 1000 blurbs based on pledge amount.
+require(quanteda)
+readability_fre <- textstat_readability(df_2a$blurb, measure="Flesch")
+flesch_score2 <- readability_fre$Flesch
+df_2c2 <- cbind(df_2a, flesch_score2)
+
+#examine and remove outlier
+df_2c2$blurb[flesch_score2 <=-100]
+df_2c2 <- df_2c2 %>%
+  filter(flesch_score2 > -100)
+```
+
+
+```{r}
+#plot success against the Flesch scores
+p <- ggplot(df_2c2, aes(y = flesch_score2, x = state))
+p + geom_boxplot(width=0.3) + coord_flip() +
+  labs(title="Readability Unrelated to Project Success", y = "Blurb Readability Score", x = "") +
+  theme_economist()
+
+```
+
+#3. Sentiment
+*Now, let's check whether the use of positive / negative words or specific emotions helps a project to be successful.*
+
+##a) Stay positive
+*Calculate the tone of each text based on the positive and negative words that are being used. You can rely on the Hu & Liu dictionary provided in lecture or use the Bing dictionary contained in the tidytext package (tidytext::sentiments). Visualize the relationship between tone of the document and success. Briefly comment.*
+
+```{r}
+#get Hu & Liu dictionary
+library(lexicon)
+pos <- hash_sentiment_huliu %>%
+  filter(y==1)
+
+neg <- hash_sentiment_huliu %>%
+  filter(y==-1)
+
+#function to count pos/neg words and to generate tone
+sentiment <- function(words=c("really great good stuff bad")){
+  require(quanteda)
+  tok <- quanteda::tokens(words)
+  pos.count <- sum(tok[[1]]%in%pos[,1])
+  neg.count <- sum(tok[[1]]%in%neg[,1])
+  out <- (pos.count - neg.count)/(pos.count+neg.count)
+  return(out)
+}
+
+```
+
+```{r}
+#Apply the sentiment function to the 1000 most and 1000 least successful blurbs and add them to the df that contains the original information on these 2000 entries.
+#I will use the blurb texts from corpus_2a_comp which contains cleaned and stem-completed words from the most and least successful blurbs.
+df_3a <- data.frame(text = corpus_2a_comp, stringsAsFactors = FALSE)
+names(df_3a)[2] <- "blurb"
+df_3a$tone_raw <- NA
+for (i in 1:length(df_3a$blurb)) {
+  df_3a$tone_raw[i] <- sentiment(df_3a$blurb[i])
+}
+
+#change the "NaN" values for tone to zero, or neutral tone.
+df_3a <- df_3a %>%
+  mutate(tone = case_when(
+    is.na(tone_raw) | tone_raw==0 ~ "neutral",
+    tone_raw <0 ~ "negative",
+    tone_raw >0 ~ "positive"))
+```
+
+```{r}
+#visualize the realtionship between the tone of the blurbs and project success
+p <- ggplot(df_3a, aes(tone, fill=state))
+p + geom_bar(position="fill", width=0.7) + coord_flip() +
+  labs(title="Positive Wording Correlated with Project Success", x = "Tone in Project Blurbs", y = "Proportion of Projects", fill = "") +
+  theme_economist()
+
+```
+
+##b) Positive vs negative
+*Segregate all 2,000 blurbs into positive and negative texts based on their polarity score calculated in step (a). Now, collapse the positive and negative texts into two larger documents. Create a document-term-matrix based on this collapsed set of two documents. Generate a comparison cloud showing the most-frequent positive and negative words.*
+
+```{r, warning=FALSE}
+#separate pos/neg blurbs
+pos_blurbs <- df_3a %>%
+  filter(tone_raw >0)
+
+neg_blurbs <- df_3a %>%
+  filter(tone_raw <0)
+
+setwd("texts/")
+#collapse positive and negative blurbs into two separate txt documents
+sink(file = "pos_blurbs.txt") %>%
+  cat(pos_blurbs$blurb)
+sink()
+
+sink(file = "neg_blurbs.txt") %>% 
+  cat(neg_blurbs$blurb)
+sink()
+
+#Create a tdm based on the two (positive and negative) documents
+blurbs_3b_corpus <- VCorpus(DirSource(getwd()))
+blurbs_3b_tdm <- TermDocumentMatrix(blurbs_3b_corpus)
+blurbs_3b_tdm <- as.matrix(blurbs_3b_tdm)
+
+colnames(blurbs_3b_tdm) <- c("Negative Texts", "Positive Texts")
+
+#keep only terms that are either positive or negative
+blurbs_3b_tdm <- blurbs_3b_tdm[rownames(blurbs_3b_tdm)%in%pos[,1] |
+                                 rownames(blurbs_3b_tdm)%in%neg[,1] ,]
+```
+
+```{r}
+#Create comparison cloud
+
+set.seed(1225)
+comparison.cloud(blurbs_3b_tdm, colors = c("#dd3030", "#3073dd"), 
+                 scale=c(2.6, 0.3), title.size = 1, max.words = 100)
+```
+
+##c) Get in their mind
+*Now, use the NRC Word-Emotion Association Lexicon in the tidytext package to identify a larger set of emotions (anger, anticipation, disgust, fear, joy, sadness, surprise, trust). Again, visualize the relationship between the use of words from these categories and success. What is your finding?*
+
+```{r}
+#get words that correspond to each sentiment
+NRC_lex <- get_sentiments("nrc") 
+
+NRC_trust <- NRC_lex[NRC_lex$sentiment == "trust",]
+NRC_fear <- NRC_lex[NRC_lex$sentiment == "fear",]
+NRC_negative <- NRC_lex[NRC_lex$sentiment == "negative",]
+NRC_sadness <- NRC_lex[NRC_lex$sentiment == "sadness",]
+NRC_anger <- NRC_lex[NRC_lex$sentiment == "anger",]
+NRC_surprise <- NRC_lex[NRC_lex$sentiment == "surprise",]
+NRC_positive <- NRC_lex[NRC_lex$sentiment == "positive",]
+NRC_disgust <- NRC_lex[NRC_lex$sentiment == "disgust",]
+NRC_joy <- NRC_lex[NRC_lex$sentiment == "joy",]
+NRC_anticipation <- NRC_lex[NRC_lex$sentiment == "anticipation",]
+
+```
+
+```{r}
+#write a function to detect the presence of words that correspond to each sentiment
+NRC_sentiment <- function(words=c("really great good stuff bad")){
+  require(quanteda)
+  tok <- quanteda::tokens(words)
+  trust <- max(tok[[1]]%in%NRC_trust$word)
+  fear <- max(tok[[1]]%in%NRC_fear$word)
+  negative <- max(tok[[1]]%in%NRC_negative$word)
+  sadness <- max(tok[[1]]%in%NRC_sadness$word)
+  anger <- max(tok[[1]]%in%NRC_anger$word)
+  surprise <- max(tok[[1]]%in%NRC_surprise$word)
+  positive <- max(tok[[1]]%in%NRC_positive$word)
+  disgust <- max(tok[[1]]%in%NRC_disgust$word)
+  joy <- max(tok[[1]]%in%NRC_joy$word)
+  anticipation <- max(tok[[1]]%in%NRC_anticipation$word)
+  return(c(trust, fear, negative, sadness, anger, surprise, positive, disgust, joy, anticipation))
+}
+```
+
+```{r}
+#make new df for this problem using the original full data with the 2000 most and least successful projects from df_2a and replacing the original blurbs with the cleaned and stem-completed blurbs from df_3a.
+df_3c <- cbind(df_2a[-2], df_3a$blurb) %>%
+  .[, c(12, 17, 23)]
+names(df_3c)[3] <- "blurb"
+df_3c$blurb <- as.character(df_3c$blurb)
+
+```
+
+```{r}
+#add dummy variables for each sentiment 
+df_3c$trust <- NA
+df_3c$fear <- NA
+df_3c$negative <- NA
+df_3c$sadness <- NA
+df_3c$anger <- NA
+df_3c$surprise <- NA
+df_3c$positive <- NA
+df_3c$disgust <- NA
+df_3c$joy <- NA
+df_3c$anticipation <- NA
+
+
+```
+
+```{r}
+#apply NRC_sentiment function to blurbs and assign output to the sentiment dummy variables
+for (i in 4:13) {                     #4:13 are the dummy var cols
+  for (j in 1:length(df_3c$blurb)) {    
+    df_3c[j, i] <- NRC_sentiment(df_3c$blurb[j])[i-3]
+  }
+}
+
+```
+
+```{r}
+#count the number of sentiment words
+df_3c$count_sentiments <- NA
+for (i in 1:2000) {
+  df_3c$count_sentiments[i] <- sum(df_3c[i,4:13])
+}
+
+```
+
+```{r}
+#restructure data from wide to long format with multiple rows per blurb based on number of sentiments 
+df_3c <- df_3c %>%
+  mutate(trust = case_when(
+    trust==1 ~ "trust")) %>%
+  mutate(fear = case_when(
+    fear==1 ~ "fear")) %>%
+  mutate(negative = case_when(
+    negative==1 ~ "negative")) %>%
+  mutate(sadness = case_when(
+    sadness==1 ~ "sadness")) %>%
+  mutate(anger = case_when(
+    anger==1 ~ "anger")) %>%
+  mutate(surprise = case_when(
+    surprise==1 ~ "surprise")) %>%
+  mutate(positive = case_when(
+    positive==1 ~ "positive")) %>%
+  mutate(disgust = case_when(
+    disgust==1 ~ "disgust")) %>%
+  mutate(joy = case_when(
+    joy==1 ~ "joy")) %>%
+  mutate(anticipation = case_when(
+    anticipation==1 ~ "anticipation"))
+
+df_3c <- df_3c %>%
+  gather(trust:anticipation, key = "sentiment_remove", 
+         value = "sentiment")  %>%
+  .[!is.na(.$sentiment) | .$count_sentiments==0, ]
+
+df_3c
+```
+
+```{r}
+#visualize the relationship between the tone of the blurbs and project success
+
+positions <- c("sadness", "joy", "anticipation", "surprise",
+               "disgust", "trust", "anger", "positive", 
+               "fear", "negative", NA)
+p <- ggplot(df_3c, aes(sentiment, fill=state))
+p + geom_bar(position = "fill") + coord_flip() +
+  labs(title="Sentiments Correlated with Project Success",
+       x = "", y = "Proportion of Projects", fill = "") +
+  scale_x_discrete(limits = positions) +
+  theme_economist()
+
+```
+
+This graph shows the proportion of successes versus failures for blurbs that contain words related to certain sentiments. The "NA" bar shows blurbs with no "sentimental" words, as identified by the NRC lexicon. It looks like blurbs with no "sentimental" words associated with them are most successful and there appear to be no clear pattern with the other sentiments.
+
+It is possible that the group of "NA" blurbs may be more successful than blurbs with words that are evoke emotion because unemotional blurbs are more factual and attract more support than opinionated ones.
+
+I thought it was also worth looking at the words in the NRC lexicon, and some of the sentiments associated with the words were surprising and lead me to believe that this classification of words may not be as accurate as one would wish.
+
+For example, the first 20 words that were associated with "disgust" include words like "aftermath", "actionable", "abundance".
+
+I also looked at a sample of (the first 50) "NA" blurbs, and was surprised to find some words in these blurbs that I associate sentiment. For example, I found the following words that should have been associated with positivity: well, appreciate, smartest, helped, better, new, luxuriously, versatile, amazing, rich, secure, best, smart, champions, support, possible, play, exploration, heart, dream, first, lightest, thinnest, fresh, game, easier, faster, warm.
+
