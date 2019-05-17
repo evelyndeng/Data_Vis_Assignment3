@@ -4,7 +4,9 @@ Data Visualization Class - Assignment 3
 Instructions for the assignment were:
 
 Text Mining Kickstarter Projects
+
 Overview
+
 Kickstarter is an American public-benefit corporation based in Brooklyn, New York, that maintains a global crowd funding platform focused on creativity. The company’s stated mission is to “help bring creative projects to life”.
 
 Kickstarter has reportedly received more than $4 billion in pledges from 15.5 million backers to fund 257,000 creative projects, such as films, music, stage shows, comics, journalism, video games, technology and food-related projects.
@@ -12,6 +14,7 @@ Kickstarter has reportedly received more than $4 billion in pledges from 15.5 mi
 For this assignment, I am asking you to analyze the descriptions of kickstarter projects to identify commonalities of successful (and unsuccessful projects) using the text mining techniques we covered in the past two lectures.
 
 Data
+
 The dataset for this assignment is taken from webroboto.io ‘s repository. They developed a scrapper robot that crawls all Kickstarter projects monthly since 2009. We will just take data from the most recent crawl on 2019-03-14.
 
 To simplify your task, I have downloaded the files and partially cleaned the scraped data. In particular, I converted several JSON columns, corrected some obvious data issues, and removed some variables that are not of interest (or missing frequently), and remove some duplicated project entries. I have also subsetted the data to only contain projects originating in the United States (to have only English language and USD denominated projects).
