@@ -1,5 +1,7 @@
 # Data_Vis_Assignment3
-Data Visualization Class - Assignment 3 - Text/Sentiment Analysis
+Data Visualization Class - Assignment 3 
+
+In this assignment, I used text analysis and sentiment analysis techniques to create visualizations such as word clouds and pyramid plots comparing successfully funded project descriptions to unsuccessful ones.
 
 The data file required for this project is too big to upload on Github. Please contact me if you would like access to the data.
 
